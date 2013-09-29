@@ -31,7 +31,7 @@ FACILITY="local6"         	# facility to log to -> see rsyslog.conf
 							# Put the file "autoshutdownlog.conf" in /etc/rsyslog.d/
 
 ######## CONSTANT DEFINITION ########
-VERSION="0.3.9.4"         # script version information
+VERSION="0.3.9.5"         # script version information
 #CTOPPARAM="-d 1 -n 1"         # define common parameters for the top command line "-d 1 -n 1" (Debian/Ubuntu)
 CTOPPARAM="-b -d 1 -n 1"         # define common parameters for the top command line "-b -d 1 -n 1" (Debian/Ubuntu)
 STOPPARAM="-i $CTOPPARAM"   # add specific parameters for the top command line  "-i $CTOPPARAM" (Debian/Ubuntu)
@@ -513,7 +513,7 @@ _check_net_status()
 	# Extra Samba-Check for connected Clients only if other processes are negative -> [ $NUMPROC -gt 0 ]
 	if [ $NUMPROC -gt 0 ]; then
 		if [ $(/usr/bin/smbstatus | grep -i "no locked" | wc -l) != "1" ]; then
-			_log "INFO: Samba connected -> no shutdown"
+			_log "INFO: Samba connected (reported by smbstatus) -> no shutdown"
 			let NUMPROC++
 		fi
 	fi
@@ -535,14 +535,10 @@ _check_net_status()
 #   return         : 1      : if no (not enough) network activity has been found
 #               : 0      : if enough network activity has been found
 #
-# Checks for activity in eth0. It compares the RX and TX bytes
-# every cycle to detect if they significantly changed.
-# If they haven't, it will force the system to sleep.
+# Checks for activity on given NIC. It compares the RX and TX bytes
+# in every cycle to detect if they significantly changed.
+# If they haven't, it will force the system to sleep or do the next check
 #
-
-#ToDo: 
-# - Bug-testing
-
 _check_ul_dl_rate()
 {
 	NICNR_ULDLCHECK="$1"
@@ -744,10 +740,6 @@ _check_config() {
 				PLUGINCHECK="false"; }
 	fi
 
-	[[ "$CHECKCLOCKACTIVE" = "true" || "$CHECKCLOCKACTIVE" = "false" ]] || { _log "WARN: CHECKCLOCKACTIVE not set properly. It has to be 'true' or 'false'."
-			_log "WARN: Set CHECKCLOCKACTIVE to false"
-			CHECKCLOCKACTIVE="false"; }
-
 	# Flag: 1 - 999 (cycles)
 	[[ "$CYCLES" =~ ^([1-9]|[1-9][0-9]|[1-9][0-9]{2})$ ]] || {
 			_log "WARN: Invalid parameter format: Flag"
@@ -755,12 +747,33 @@ _check_config() {
 			_log "WARN: Setting CYCLES to 5"
 			CYCLES="5"; }
 
-	[[ "$UPHOURS" =~ ^(([0-1]?[0-9]|[2][0-3])\.{2}([0-1]?[0-9]|[2][0-3]))$ ]] || {
+	# CheckClockActive
+# 	[[ "$CHECKCLOCKACTIVE" = "true" || "$CHECKCLOCKACTIVE" = "false" ]] || { _log "WARN: CHECKCLOCKACTIVE not set properly. It has to be 'true' or 'false'."
+# 		_log "WARN: Set CHECKCLOCKACTIVE to false"
+# 		CHECKCLOCKACTIVE="false"; }
+# 
+# 	## UpHours
+# 	[[ "$UPHOURS" =~ ^(([0-1]?[0-9]|[2][0-3])\.{2}([0-1]?[0-9]|[2][0-3]))$ ]] || {
+# 		_log "WARN: Invalid parameter list format: UPHOURS [hour1..hour2]"
+# 		_log "WARN: You set it to '$UPHOURS', which is not a correct syntax. Maybe it's empty?"
+# 		_log "WARN: Setting UPHOURS to 6..20"
+# 		UPHOURS="6..20"; }
+
+	# CheckClockActive TestCode together with UPHOURS
+	[[ "$CHECKCLOCKACTIVE" = "true" || "$CHECKCLOCKACTIVE" = "false" ]] || { _log "WARN: CHECKCLOCKACTIVE not set properly. It has to be 'true' or 'false'."
+		_log "WARN: Set CHECKCLOCKACTIVE to false"
+		CHECKCLOCKACTIVE="false"; }
+
+	if [ "$CHECKCLOCKACTIVE" = "true" ]; then
+		## Check UpHours only if CHECKCLOCKACTIVE is "true"
+		[[ "$UPHOURS" =~ ^(([0-1]?[0-9]|[2][0-3])\.{2}([0-1]?[0-9]|[2][0-3]))$ ]] || {
 			_log "WARN: Invalid parameter list format: UPHOURS [hour1..hour2]"
 			_log "WARN: You set it to '$UPHOURS', which is not a correct syntax. Maybe it's empty?"
 			_log "WARN: Setting UPHOURS to 6..20"
 			UPHOURS="6..20"; }
+	fi
 
+	# Netstatword
 	if [ -z "$NETSTATWORD" ]; then
 		if $DEBUG; then
 			_log "INFO: NETSTATWORD not set in the config. The check for connections, like SSH (Port 22) will not work on the CLI until you set NETSTATWORD"
@@ -791,6 +804,7 @@ _check_config() {
 					exit 1; }
 	fi
 
+	#TempProcNames
 	if  [ "$TEMPPROCNAMES" = "-" ]; then
 			_log "INFO: TEMPPROCNAMES is disabled - No processes being checked"
 			TEMPPROCNAMES=""
@@ -813,6 +827,7 @@ _check_config() {
 			_log "WARN: Setting NSOCKETNUMBERS to 21,22 (FTP and SSH)"
 			NSOCKETNUMBERS="22"; }
 
+	# Pinglist
 	if [ -z $PINGLIST ]; then
 		[[ "$RANGE" =~ ^([1-9]{1}[0-9]{0,2})?([1-9]{1}[0-9]{0,2}\.{2}[1-9]{1}[0-9]{0,2})?(,[1-9]{1}[0-9]{0,2})*((,[1-9]{1}[0-9]{0,2})\.{2}[1-9]{1}[0-9]{0,2})*$ ]] || {
 				_log "WARN: Invalid parameter list format: RANGE [v..v+n,w,x+m..x,y,z..z+o]"
@@ -892,6 +907,15 @@ _check_config() {
 	else
 		_log "WARN: LOADAVERAGECHECK is set to false"
 		_log "WARN: Ignoring LOADAVERAGE"
+	fi
+
+	# FORCE_NIC
+	if [ ! -z "$FORCE_NIC" ]; then
+		[[ "$FORCE_NIC" =~ ^([a-z]*[1-9]{1})$ ]] || {
+			_log "WARN: Invalid parameter format: FORCE_NIC"
+			_log "WARN: You set it to '$FORCE_NIC', which is not a correct syntax. It has to match '[a-z]*[1-9]{1}'"
+			_log "WARN: Unsetting FORCE_NIC"
+			unset FORCE_NIC; }
 	fi
 
 }
