@@ -8,7 +8,7 @@ if [ -f /etc/autoshutdown.conf ]; then
 	echo "/etc/autoshutdown.conf backed up to /etc/autoshutdown.conf_bak_$scriptdate"
 fi
 cp ./etc/autoshutdown.default /etc/autoshutdown.conf
-echo "defauot /etc/autoshutdown.conf created"
+echo "default /etc/autoshutdown.conf created"
 
 update-rc.d  remove autoshutdown
 update-rc.d autoshutdown defaults
