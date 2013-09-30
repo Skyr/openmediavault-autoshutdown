@@ -31,7 +31,7 @@ FACILITY="local6"         	# facility to log to -> see rsyslog.conf
 							# Put the file "autoshutdownlog.conf" in /etc/rsyslog.d/
 
 ######## CONSTANT DEFINITION ########
-VERSION="0.3.9.5"         # script version information
+VERSION="0.3.9.6"         # script version information
 #CTOPPARAM="-d 1 -n 1"         # define common parameters for the top command line "-d 1 -n 1" (Debian/Ubuntu)
 CTOPPARAM="-b -d 1 -n 1"         # define common parameters for the top command line "-b -d 1 -n 1" (Debian/Ubuntu)
 STOPPARAM="-i $CTOPPARAM"   # add specific parameters for the top command line  "-i $CTOPPARAM" (Debian/Ubuntu)
@@ -747,25 +747,13 @@ _check_config() {
 			_log "WARN: Setting CYCLES to 5"
 			CYCLES="5"; }
 
-	# CheckClockActive
-# 	[[ "$CHECKCLOCKACTIVE" = "true" || "$CHECKCLOCKACTIVE" = "false" ]] || { _log "WARN: CHECKCLOCKACTIVE not set properly. It has to be 'true' or 'false'."
-# 		_log "WARN: Set CHECKCLOCKACTIVE to false"
-# 		CHECKCLOCKACTIVE="false"; }
-# 
-# 	## UpHours
-# 	[[ "$UPHOURS" =~ ^(([0-1]?[0-9]|[2][0-3])\.{2}([0-1]?[0-9]|[2][0-3]))$ ]] || {
-# 		_log "WARN: Invalid parameter list format: UPHOURS [hour1..hour2]"
-# 		_log "WARN: You set it to '$UPHOURS', which is not a correct syntax. Maybe it's empty?"
-# 		_log "WARN: Setting UPHOURS to 6..20"
-# 		UPHOURS="6..20"; }
-
-	# CheckClockActive TestCode together with UPHOURS
+	# CheckClockActive together with UPHOURS
 	[[ "$CHECKCLOCKACTIVE" = "true" || "$CHECKCLOCKACTIVE" = "false" ]] || { _log "WARN: CHECKCLOCKACTIVE not set properly. It has to be 'true' or 'false'."
 		_log "WARN: Set CHECKCLOCKACTIVE to false"
 		CHECKCLOCKACTIVE="false"; }
 
+	# Check UpHours only if CHECKCLOCKACTIVE is "true"
 	if [ "$CHECKCLOCKACTIVE" = "true" ]; then
-		## Check UpHours only if CHECKCLOCKACTIVE is "true"
 		[[ "$UPHOURS" =~ ^(([0-1]?[0-9]|[2][0-3])\.{2}([0-1]?[0-9]|[2][0-3]))$ ]] || {
 			_log "WARN: Invalid parameter list format: UPHOURS [hour1..hour2]"
 			_log "WARN: You set it to '$UPHOURS', which is not a correct syntax. Maybe it's empty?"
@@ -911,9 +899,10 @@ _check_config() {
 
 	# FORCE_NIC
 	if [ ! -z "$FORCE_NIC" ]; then
-		[[ "$FORCE_NIC" =~ ^([a-z]*[1-9]{1})$ ]] || {
+		[[ "$FORCE_NIC" =~ ^([a-z]{3,}[0-9]{1}|[a-z]{3,}[0-9]{1})+( [a-z]{3,}[0-9]{1})*$ ]]|| {
 			_log "WARN: Invalid parameter format: FORCE_NIC"
-			_log "WARN: You set it to '$FORCE_NIC', which is not a correct syntax. It has to match '[a-z]*[1-9]{1}'"
+			_log "WARN: You set it to '$FORCE_NIC', which is not a correct syntax. It has to match '[a-z]{3,}[0-9]{1}'"
+			_log "WARN: with spaces between every NIC: e.g. \"eth1 wlan0 usb3\""
 			_log "WARN: Unsetting FORCE_NIC"
 			unset FORCE_NIC; }
 	fi
@@ -932,19 +921,19 @@ _check_networkconfig() {
 	_log "INFO: Reading NICs ,IPs, ..."
 	NICNR=0
 	FOUNDIP=0
-	NIC_CHANGED="false"
-	for NWADAPTERS in bond0 eth0 eth1; do
+
+	# check FORCE_NIC, if set, then set it to NIC[0]
+	if [ -z "$FORCE_NIC" ]; then
+		# set the default NICs
+		FORCE_NIC="bond 0 eth0 eth1"
+	else
+		_log "INFO: FORCE_NIC found: NIC is now $FORCE_NIC"
+		_log "INFO: If the following checks fail, then try to uncomment FORCE_NIC to do a normal network-check"
+	fi
+
+	for NWADAPTERS in $FORCE_NIC; do
 		let NICNR++
 		NIC[$NICNR]=$NWADAPTERS
-
-		# check FORCE_NIC, if set, then set it to NIC[0]
-		if [ ! -z "$FORCE_NIC" -a "$NIC_CHANGED" = "false" ]; then
-			# change the NIC only the first time if FORCE_NIC is set
-			NIC[$NICNR]=$FORCE_NIC
-			NIC_CHANGED="true"
-			_log "INFO: FORCE_NIC found: NIC is now $FORCE_NIC"
-			_log "INFO: If the following checks fail, then try to uncomment FORCE_NIC to do a normal network-check"
-		fi
 
 		if ip link show up | grep ${NIC[$NICNR]} > /dev/null; then
 			_log "INFO: NIC '${NIC[$NICNR]}' found: try to get IP"
