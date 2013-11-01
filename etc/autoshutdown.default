@@ -23,6 +23,10 @@ RANGE="2..254"
 	# To disable a check for a IP, just set a "-"
 	# -> RANGE="-"
 
+SCRIPT_TERMINATE=true
+  # Set to "true" to terminate autoshutdown script after triggering shutdown command
+  # Set to "false" to reset counters and run indefinitely
+
 ##################################################
 ####  Check Clock to identify uptime ####
 CHECKCLOCKACTIVE="false"

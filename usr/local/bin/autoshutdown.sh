@@ -161,31 +161,33 @@ _shutdown()
 	fi
 
 	# When FAKE-Mode is on:
-	[[ "$FAKE" = "true" ]] && {
+	if [[ "$FAKE" = "true" ]] ; then
 		logger -s -t "$USER - : autoshutdown [$$]" "INFO: Fake-Shutdown issued: '$SHUTDOWNCOMMAND' - Command is not executed because of Fake-Mode"
 		# normal log-entry
 		_log "INFO: Fake-Shutdown issued: '$SHUTDOWNCOMMAND'"
 		_log "INFO: The autoshutdown-script will end here."
 		_log "INFO:   "
+  else
+    # Without Fake-Mode:
+    # This logs to normal syslog - "autoshutdown [" (the space) is necessary, because then all other logs can be filterd in rsyslog.conf with
+    # :msg, contains, "autoshutdown[" /var/log/autoshutdown.log
+    # & ~
+    logger -s -t "$USER - : autoshutdown [$$]" "INFO: Shutdown issued: '$SHUTDOWNCOMMAND'"
+    # normal log-entry
+    _log "INFO: Shutdown issued: '$SHUTDOWNCOMMAND'"
+    _log "INFO:   "
+    _log "INFO:   "
+
+    # write everything to disk/stick and shutdown, hibernate, $whatever is configured
+    if sync; then eval "$SHUTDOWNCOMMAND"; fi
+    # sleep 5 minutes to allow the /etc/init.d/autoshutdown to kill the script and give the right log-message
+    # if we exit here immediately, there are errors in the log
+    sleep 5m
+  fi
+
+	if [[ "$SCRIPT_TERMINATE" = "true" ]] ; then
 		exit 0
-		}
-
-	# Without Fake-Mode:
-	# This logs to normal syslog - "autoshutdown [" (the space) is necessary, because then all other logs can be filterd in rsyslog.conf with
-	# :msg, contains, "autoshutdown[" /var/log/autoshutdown.log
-	# & ~
-	logger -s -t "$USER - : autoshutdown [$$]" "INFO: Shutdown issued: '$SHUTDOWNCOMMAND'"
-	# normal log-entry
-	_log "INFO: Shutdown issued: '$SHUTDOWNCOMMAND'"
-	_log "INFO:   "
-	_log "INFO:   "
-
-	# write everything to disk/stick and shutdown, hibernate, $whatever is configured
-	if sync; then eval "$SHUTDOWNCOMMAND"; fi
-	# sleep 5 minutes to allow the /etc/init.d/autoshutdown to kill the script and give the right log-message
-	# if we exit here immediately, there are errors in the log
-	sleep 5m
-	exit 0
+  fi
 	}
 
 ################################################################
@@ -1284,6 +1286,8 @@ while : ; do
 
 			if [ $FCNT -eq 0 ]; then
 				_shutdown;
+        # Reset counter in case machine is resumed
+        FCNT=$CYCLES
 			fi   # > if [ $FCNT -eq 0 ]; then
 	else
 		# Live IP found so reset count
